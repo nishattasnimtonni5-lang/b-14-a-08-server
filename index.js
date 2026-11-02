@@ -7,6 +7,8 @@ import "dotenv/config";
 const PORT=5000;
 const app=express()
 
+app.use(express.json())
+app.use(cors())
 
 
 const client = new MongoClient(process.env.MONGODB_URI);
@@ -64,8 +66,6 @@ app.post('/api/bookings',async(req,res)=>{
     res.status(500).json({message:"Failed to create bookings"})
   }
 })
-app.use(express.json())
-app.use(cors())
 
 app.listen(PORT,()=>{
     console.log("server is running well");
