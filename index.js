@@ -12,6 +12,7 @@ const app = express();
 app.use(cors({
   origin: [
     "http://localhost:3000",
+    "https://b-14-a-08-client.vercel.app",
     "https://b-14-a-08-client-n5a49h3ma-a-06.vercel.app"
   ],
   credentials: true
@@ -44,7 +45,7 @@ export async function connectToMongoDB() {
 async function requireAuth(req, res, next) {
   try {
     const session = await auth.api.getSession({
-      headers: fromNodeHeaders(req.headers),
+      headers: fromNodeHeaders(req.headers)
     });
 
     if (!session) {
