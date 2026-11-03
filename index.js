@@ -18,18 +18,26 @@ app.use(cors({
 }));
 
 app.all("/api/auth/{*any}", toNodeHandler(auth));
-
 app.use(express.json());
 
 const client = new MongoClient(process.env.MONGODB_URI);
 
+let clientPromise;
+
 export async function connectToMongoDB() {
   try {
-    await client.connect();
-    console.log("You successfully connected to MongoDB!");
+    if (!clientPromise) {
+      clientPromise = client.connect().catch((err) => {
+        clientPromise = null;
+        throw err;
+      });
+    }
+
+    await clientPromise;
     return client;
   } catch (err) {
-    console.log(err);
+    console.log("MongoDB connection error:", err);
+    throw err;
   }
 }
 
@@ -101,7 +109,7 @@ app.get("/", (req, res) => {
 
 app.get("/api/studios", async (req, res) => {
   try {
-    const database = client.db("studio-space");
+    const database = (await connectToMongoDB()).db("studio-space");
     const studios = database.collection("studios");
     const result = await studios.find({}).toArray();
 
@@ -114,7 +122,7 @@ app.get("/api/studios", async (req, res) => {
 
 app.get("/api/studios/:id", async (req, res) => {
   try {
-    const database = client.db("studio-space");
+    const database = (await connectToMongoDB()).db("studio-space");
     const studios = database.collection("studios");
     const result = await studios.findOne({ id: req.params.id });
 
@@ -131,7 +139,7 @@ app.get("/api/studios/:id", async (req, res) => {
 
 app.get("/api/my-bookings", verifyJWT, async (req, res) => {
   try {
-    const database = client.db("studio-space");
+    const database = (await connectToMongoDB()).db("studio-space");
     const bookings = database.collection("bookings");
     const studios = database.collection("studios");
 
@@ -160,7 +168,7 @@ app.get("/api/my-bookings", verifyJWT, async (req, res) => {
 
 app.post("/api/bookings", requireAuth, async (req, res) => {
   try {
-    const database = client.db("studio-space");
+    const database = (await connectToMongoDB()).db("studio-space");
     const bookings = database.collection("bookings");
 
     const bookingData = {
@@ -189,7 +197,5 @@ if (process.env.NODE_ENV !== "production") {
     console.log("server is running well");
   });
 }
-
-connectToMongoDB();
 
 export default app;
