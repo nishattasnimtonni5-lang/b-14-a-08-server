@@ -1,7 +1,8 @@
-import express from 'express';
-import cors from 'cors';
-import { MongoClient } from 'mongodb';
+import express from "express";
+import cors from "cors";
+import { MongoClient } from "mongodb";
 import "dotenv/config";
+import jwt from "jsonwebtoken";
 import { fromNodeHeaders, toNodeHandler } from "better-auth/node";
 import { auth } from "./auth.js";
 
@@ -28,7 +29,7 @@ export async function connectToMongoDB() {
     console.log("You successfully connected to MongoDB!");
     return client;
   } catch (err) {
-    console.dir(err);
+    console.log(err);
   }
 }
 
@@ -39,46 +40,96 @@ async function requireAuth(req, res, next) {
     });
 
     if (!session) {
-      return res.status(401).json({
-        message: "Unauthorized"
-      });
+      return res.status(401).json({ message: "Unauthorized" });
     }
 
     req.user = session.user;
     next();
   } catch (error) {
-    console.log("Session verification error:", error);
-    return res.status(401).json({
-      message: "Authentication failed"
-    });
+    console.log("Authentication error:", error);
+    return res.status(401).json({ message: "Authentication failed" });
   }
 }
 
-app.get('/api/me', requireAuth, (req, res) => {
-  res.status(200).json({
-    user: req.user,
-  });
+function verifyJWT(req, res, next) {
+  try {
+    const authorization = req.headers.authorization;
+
+    if (!authorization || !authorization.startsWith("Bearer ")) {
+      return res.status(401).json({ message: "Access token required" });
+    }
+
+    const token = authorization.split(" ")[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    req.user = decoded;
+    next();
+  } catch (error) {
+    return res.status(401).json({ message: "Invalid or expired token" });
+  }
+}
+
+app.get("/api/token", requireAuth, (req, res) => {
+  try {
+    if (!process.env.JWT_SECRET) {
+      return res.status(500).json({ message: "JWT_SECRET is missing" });
+    }
+
+    const token = jwt.sign(
+      {
+        id: req.user.id,
+        email: req.user.email
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "1h" }
+    );
+
+    res.status(200).json({ token });
+  } catch (error) {
+    console.log("Token generation error:", error);
+    res.status(500).json({ message: "Token generation failed" });
+  }
 });
 
-app.get('/', (req, res) => {
+app.get("/api/me", requireAuth, (req, res) => {
+  res.status(200).json({ user: req.user });
+});
+
+app.get("/", (req, res) => {
   res.send("hello what");
 });
 
-app.get('/api/studios', async (req, res) => {
+app.get("/api/studios", async (req, res) => {
   try {
     const database = client.db("studio-space");
     const studios = database.collection("studios");
     const result = await studios.find({}).toArray();
+
     res.status(200).json(result);
   } catch (err) {
     console.log(err);
-    res.status(500).json({
-      message: "Failed to fetch studios"
-    });
+    res.status(500).json({ message: "Failed to fetch studios" });
   }
 });
 
-app.get('/api/my-bookings', requireAuth, async (req, res) => {
+app.get("/api/studios/:id", async (req, res) => {
+  try {
+    const database = client.db("studio-space");
+    const studios = database.collection("studios");
+    const result = await studios.findOne({ id: req.params.id });
+
+    if (!result) {
+      return res.status(404).json({ message: "Studio not found" });
+    }
+
+    res.status(200).json(result);
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ message: "Failed to fetch studio" });
+  }
+});
+
+app.get("/api/my-bookings", verifyJWT, async (req, res) => {
   try {
     const database = client.db("studio-space");
     const bookings = database.collection("bookings");
@@ -91,9 +142,7 @@ app.get('/api/my-bookings', requireAuth, async (req, res) => {
 
     const bookingsWithStudio = await Promise.all(
       result.map(async (booking) => {
-        const studio = await studios.findOne({
-          id: booking.studioId
-        });
+        const studio = await studios.findOne({ id: booking.studioId });
 
         return {
           ...booking,
@@ -105,28 +154,11 @@ app.get('/api/my-bookings', requireAuth, async (req, res) => {
     res.status(200).json(bookingsWithStudio);
   } catch (err) {
     console.log(err);
-    res.status(500).json({
-      message: "Failed to fetch bookings"
-    });
+    res.status(500).json({ message: "Failed to fetch bookings" });
   }
 });
 
-app.get('/api/studios/:id', async (req, res) => {
-  try {
-    const id = req.params.id;
-    const database = client.db("studio-space");
-    const studios = database.collection("studios");
-    const result = await studios.findOne({ id: id });
-    res.status(200).json(result);
-  } catch (err) {
-    console.log(err);
-    res.status(500).json({
-      message: "Failed to fetch studios"
-    });
-  }
-});
-
-app.post('/api/bookings', requireAuth, async (req, res) => {
+app.post("/api/bookings", requireAuth, async (req, res) => {
   try {
     const database = client.db("studio-space");
     const bookings = database.collection("bookings");
@@ -148,9 +180,7 @@ app.post('/api/bookings', requireAuth, async (req, res) => {
     });
   } catch (err) {
     console.log(err);
-    res.status(500).json({
-      message: "Failed to create bookings"
-    });
+    res.status(500).json({ message: "Failed to create booking" });
   }
 });
 
