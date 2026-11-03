@@ -10,18 +10,24 @@ const db = client.db("studio-space");
 
 export const auth = betterAuth({
   baseURL: process.env.BETTER_AUTH_URL,
+
   trustedOrigins: [
     "http://localhost:3000",
-    "https://b-14-a-08-client-n5a49h3ma-a-06.vercel.app"
+    "https://b-14-a-08-client-n5a49h3ma-a-06.vercel.app",
   ],
+
   secret: process.env.BETTER_AUTH_SECRET,
+
   database: mongodbAdapter(db),
+
   emailAndPassword: {
     enabled: true,
   },
+
   advanced: {
-    defaultCookieAttributes: process.env.NODE_ENV === "production"
-      ? { sameSite: "none", secure: true }
-      : {},
+    defaultCookieAttributes: {
+      sameSite: "none",
+      secure: true,
+    },
   },
 });
