@@ -235,5 +235,52 @@ app.post("/api/studios", verifyJWT, async (req, res) => {
   await db.collection("studios").insertOne(studio);
   res.status(201).json({ message: "Studio added successfully" });
 });
+app.get("/api/my-studios", verifyJWT, async (req, res) => {
+  const db = (await connectToMongoDB()).db("studio-space");
 
+  const studios = await db.collection("studios").find({
+    ownerId: req.user.id
+  }).toArray();
+
+  res.send(studios);
+});
+app.patch("/api/studios/:id", verifyJWT, async (req, res) => {
+  const { name, category, location, price, image } = req.body;
+
+  const db = (await connectToMongoDB()).db("studio-space");
+
+  const result = await db.collection("studios").updateOne(
+    { id: req.params.id, ownerId: req.user.id },
+    {
+      $set: {
+        name,
+        category,
+        location,
+        price: Number(price),
+        image,
+      },
+    }
+  );
+
+  if (!result.matchedCount) {
+    return res.status(404).json({ message: "Studio not found" });
+  }
+
+  res.send({ message: "Studio updated successfully" });
+});
+
+app.delete("/api/studios/:id", verifyJWT, async (req, res) => {
+  const db = (await connectToMongoDB()).db("studio-space");
+
+  const result = await db.collection("studios").deleteOne({
+    id: req.params.id,
+    ownerId: req.user.id,
+  });
+
+  if (!result.deletedCount) {
+    return res.status(404).json({ message: "Studio not found" });
+  }
+
+  res.send({ message: "Studio deleted successfully" });
+});
 export default app;
