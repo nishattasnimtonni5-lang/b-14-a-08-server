@@ -220,5 +220,20 @@ if (process.env.NODE_ENV !== "production" && isMainModule) {
     console.log("server is running well");
   });
 }
+app.post("/api/studios", verifyJWT, async (req, res) => {
+  const db = (await connectToMongoDB()).db("studio-space");
+
+  const studio = {
+    ...req.body,
+    id: String(Date.now()),
+    price: Number(req.body.price),
+    rating: 0,
+    reviews: 0,
+    ownerId: req.user.id,
+  };
+
+  await db.collection("studios").insertOne(studio);
+  res.status(201).json({ message: "Studio added successfully" });
+});
 
 export default app;
