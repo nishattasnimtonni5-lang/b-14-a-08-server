@@ -15,7 +15,8 @@ app.use(cors({
     "http://localhost:3000",
     "https://b-14-a-08-client.vercel.app",
     "https://b-14-a-08-client-n5a49h3ma-a-06.vercel.app",
-    "https://b-14-a-08-client-im8m8jvdr-a-06.vercel.app"
+    "https://b-14-a-08-client-im8m8jvdr-a-06.vercel.app",
+    "https://b-14-a-08-client-hortcrbpe-a-06.vercel.app/"
   ],
   credentials: true
 }));
