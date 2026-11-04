@@ -9,15 +9,16 @@ import { auth } from "./auth.js";
 
 const PORT = 5000;
 const app = express();
+const allowedOrigins = [
+  "http://localhost:3000",
+  "https://b-14-a-08-client.vercel.app",
+  "https://b-14-a-08-client-n5a49h3ma-a-06.vercel.app",
+  "https://b-14-a-08-client-im8m8jvdr-a-06.vercel.app",
+  "https://b-14-a-08-client-hortcrbpe-a-06.vercel.app",
+];
 
 app.use(cors({
-  origin: [
-    "http://localhost:3000",
-    "https://b-14-a-08-client.vercel.app",
-    "https://b-14-a-08-client-n5a49h3ma-a-06.vercel.app",
-    "https://b-14-a-08-client-im8m8jvdr-a-06.vercel.app",
-    "https://b-14-a-08-client-hortcrbpe-a-06.vercel.app/"
-  ],
+  origin: allowedOrigins,
   credentials: true
 }));
 
