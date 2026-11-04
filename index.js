@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import { MongoClient } from "mongodb";
+import { pathToFileURL } from "node:url";
 import "dotenv/config";
 import jwt from "jsonwebtoken";
 import { fromNodeHeaders, toNodeHandler } from "better-auth/node";
@@ -19,8 +20,8 @@ app.use(cors({
   credentials: true
 }));
 
-app.all("/api/auth/{*any}", toNodeHandler(auth));
 app.use(express.json());
+app.use("/api/auth", toNodeHandler(auth));
 
 const client = new MongoClient(process.env.MONGODB_URI);
 
@@ -170,13 +171,28 @@ app.get("/api/my-bookings", verifyJWT, async (req, res) => {
 
 app.post("/api/bookings", requireAuth, async (req, res) => {
   try {
+    const { studioId, date, time } = req.body ?? {};
+
+    const hasValidDate =
+      typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date);
+    const hasValidTime =
+      typeof time === "string" && /^\d{2}:\d{2}$/.test(time);
+    const hasStudioId =
+      typeof studioId === "string" && studioId.trim().length > 0;
+
+    if (!hasStudioId || !hasValidDate || !hasValidTime) {
+      return res.status(400).json({
+        message: "A valid studioId, date and time are required",
+      });
+    }
+
     const database = (await connectToMongoDB()).db("studio-space");
     const bookings = database.collection("bookings");
 
     const bookingData = {
-      studioId: req.body.studioId,
-      date: req.body.date,
-      time: req.body.time,
+      studioId,
+      date,
+      time,
       userId: req.user.id,
       status: "Pending",
       createdAt: new Date()
@@ -194,7 +210,10 @@ app.post("/api/bookings", requireAuth, async (req, res) => {
   }
 });
 
-if (process.env.NODE_ENV !== "production") {
+const isMainModule =
+  process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (process.env.NODE_ENV !== "production" && isMainModule) {
   app.listen(PORT, () => {
     console.log("server is running well");
   });
