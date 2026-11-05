@@ -9,6 +9,7 @@ import { auth } from "./auth.js";
 
 const PORT = 5000;
 const app = express();
+
 const allowedOrigins = [
   "http://localhost:3000",
   "https://b-14-a-08-client.vercel.app",
@@ -19,15 +20,15 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: allowedOrigins,
-  credentials: true
+  credentials: true,
 }));
 
 app.all("/api/auth/*splat", toNodeHandler(auth));
 app.use(express.json());
 
 const client = new MongoClient(process.env.MONGODB_URI);
-
 let clientPromise;
+let bookingIndexPromise;
 
 export async function connectToMongoDB() {
   try {
@@ -46,10 +47,34 @@ export async function connectToMongoDB() {
   }
 }
 
+async function ensureBookingIndex() {
+  if (!bookingIndexPromise) {
+    bookingIndexPromise = (async () => {
+      const database = (await connectToMongoDB()).db("studio-space");
+
+      await database.collection("bookings").createIndex(
+        { studioId: 1, date: 1, time: 1 },
+        {
+          unique: true,
+          partialFilterExpression: {
+            status: { $in: ["Pending", "Confirmed"] },
+          },
+          name: "unique_active_studio_booking",
+        }
+      );
+    })().catch((error) => {
+      bookingIndexPromise = null;
+      throw error;
+    });
+  }
+
+  return bookingIndexPromise;
+}
+
 async function requireAuth(req, res, next) {
   try {
     const session = await auth.api.getSession({
-      headers: fromNodeHeaders(req.headers)
+      headers: fromNodeHeaders(req.headers),
     });
 
     if (!session) {
@@ -91,7 +116,7 @@ app.get("/api/token", requireAuth, (req, res) => {
     const token = jwt.sign(
       {
         id: req.user.id,
-        email: req.user.email
+        email: req.user.email,
       },
       process.env.JWT_SECRET,
       { expiresIn: "1h" }
@@ -159,7 +184,7 @@ app.get("/api/my-bookings", verifyJWT, async (req, res) => {
 
         return {
           ...booking,
-          studio
+          studio,
         };
       })
     );
@@ -177,8 +202,10 @@ app.post("/api/bookings", requireAuth, async (req, res) => {
 
     const hasValidDate =
       typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date);
+
     const hasValidTime =
       typeof time === "string" && /^\d{2}:\d{2}$/.test(time);
+
     const hasStudioId =
       typeof studioId === "string" && studioId.trim().length > 0;
 
@@ -191,96 +218,142 @@ app.post("/api/bookings", requireAuth, async (req, res) => {
     const database = (await connectToMongoDB()).db("studio-space");
     const bookings = database.collection("bookings");
 
+    await ensureBookingIndex();
+
+    const existingBooking = await bookings.findOne({
+      studioId,
+      date,
+      time,
+      status: { $in: ["Pending", "Confirmed"] },
+    });
+
+    if (existingBooking) {
+      return res.status(409).json({
+        message: "This studio is already booked for this date and time",
+      });
+    }
+
     const bookingData = {
       studioId,
       date,
       time,
       userId: req.user.id,
       status: "Pending",
-      createdAt: new Date()
+      createdAt: new Date(),
     };
 
     const result = await bookings.insertOne(bookingData);
 
     res.status(201).json({
       message: "Booking created successfully",
-      bookingId: result.insertedId
+      bookingId: result.insertedId,
     });
   } catch (err) {
+    if (err.code === 11000) {
+      return res.status(409).json({
+        message: "This studio is already booked for this date and time",
+      });
+    }
+
     console.log(err);
     res.status(500).json({ message: "Failed to create booking" });
   }
 });
 
+app.post("/api/studios", verifyJWT, async (req, res) => {
+  try {
+    const db = (await connectToMongoDB()).db("studio-space");
+
+    const studio = {
+      ...req.body,
+      id: String(Date.now()),
+      price: Number(req.body.price),
+      rating: 0,
+      reviews: 0,
+      ownerId: req.user.id,
+    };
+
+    await db.collection("studios").insertOne(studio);
+
+    res.status(201).json({ message: "Studio added successfully" });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ message: "Failed to add studio" });
+  }
+});
+
+app.get("/api/my-studios", verifyJWT, async (req, res) => {
+  try {
+    const db = (await connectToMongoDB()).db("studio-space");
+
+    const studios = await db.collection("studios").find({
+      ownerId: req.user.id,
+    }).toArray();
+
+    res.send(studios);
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ message: "Failed to fetch studios" });
+  }
+});
+
+app.patch("/api/studios/:id", verifyJWT, async (req, res) => {
+  try {
+    const { name, category, location, price, image } = req.body;
+    const db = (await connectToMongoDB()).db("studio-space");
+
+    const result = await db.collection("studios").updateOne(
+      { id: req.params.id, ownerId: req.user.id },
+      {
+        $set: {
+          name,
+          category,
+          location,
+          price: Number(price),
+          image,
+        },
+      }
+    );
+
+    if (!result.matchedCount) {
+      return res.status(404).json({ message: "Studio not found" });
+    }
+
+    res.send({ message: "Studio updated successfully" });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ message: "Failed to update studio" });
+  }
+});
+
+app.delete("/api/studios/:id", verifyJWT, async (req, res) => {
+  try {
+    const db = (await connectToMongoDB()).db("studio-space");
+
+    const result = await db.collection("studios").deleteOne({
+      id: req.params.id,
+      ownerId: req.user.id,
+    });
+
+    if (!result.deletedCount) {
+      return res.status(404).json({ message: "Studio not found" });
+    }
+
+    res.send({ message: "Studio deleted successfully" });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ message: "Failed to delete studio" });
+  }
+});
+
 const isMainModule =
-  process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (process.env.NODE_ENV !== "production" && isMainModule) {
   app.listen(PORT, () => {
     console.log("server is running well");
   });
 }
-app.post("/api/studios", verifyJWT, async (req, res) => {
-  const db = (await connectToMongoDB()).db("studio-space");
 
-  const studio = {
-    ...req.body,
-    id: String(Date.now()),
-    price: Number(req.body.price),
-    rating: 0,
-    reviews: 0,
-    ownerId: req.user.id,
-  };
-
-  await db.collection("studios").insertOne(studio);
-  res.status(201).json({ message: "Studio added successfully" });
-});
-app.get("/api/my-studios", verifyJWT, async (req, res) => {
-  const db = (await connectToMongoDB()).db("studio-space");
-
-  const studios = await db.collection("studios").find({
-    ownerId: req.user.id
-  }).toArray();
-
-  res.send(studios);
-});
-app.patch("/api/studios/:id", verifyJWT, async (req, res) => {
-  const { name, category, location, price, image } = req.body;
-
-  const db = (await connectToMongoDB()).db("studio-space");
-
-  const result = await db.collection("studios").updateOne(
-    { id: req.params.id, ownerId: req.user.id },
-    {
-      $set: {
-        name,
-        category,
-        location,
-        price: Number(price),
-        image,
-      },
-    }
-  );
-
-  if (!result.matchedCount) {
-    return res.status(404).json({ message: "Studio not found" });
-  }
-
-  res.send({ message: "Studio updated successfully" });
-});
-
-app.delete("/api/studios/:id", verifyJWT, async (req, res) => {
-  const db = (await connectToMongoDB()).db("studio-space");
-
-  const result = await db.collection("studios").deleteOne({
-    id: req.params.id,
-    ownerId: req.user.id,
-  });
-
-  if (!result.deletedCount) {
-    return res.status(404).json({ message: "Studio not found" });
-  }
-
-  res.send({ message: "Studio deleted successfully" });
-});
 export default app;
