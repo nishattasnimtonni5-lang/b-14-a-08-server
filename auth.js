@@ -14,6 +14,20 @@ const client = new MongoClient(mongoUri);
 await client.connect();
 
 const db = client.db("studio-space");
+const googleClientId = process.env.BETTER_AUTH_GOOGLE_CLIENT_ID;
+const googleClientSecret = process.env.BETTER_AUTH_GOOGLE_SECRET;
+
+const socialProviders = {};
+if (googleClientId && googleClientSecret) {
+  socialProviders.google = {
+    clientId: googleClientId,
+    clientSecret: googleClientSecret,
+  };
+} else {
+  console.warn(
+    "Google sign-in is disabled; set BETTER_AUTH_GOOGLE_CLIENT_ID and BETTER_AUTH_GOOGLE_SECRET."
+  );
+}
 
 const trustedOrigins = [
   "http://localhost:3000",
@@ -31,6 +45,7 @@ export const auth = betterAuth({
     minPasswordLength: 6,
   maxPasswordLength: 128,
   },
+  socialProviders,
   advanced: {
     defaultCookieAttributes: {
       sameSite: "none",
