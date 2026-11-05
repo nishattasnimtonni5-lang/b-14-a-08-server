@@ -7,19 +7,21 @@ import jwt from "jsonwebtoken";
 import { fromNodeHeaders, toNodeHandler } from "better-auth/node";
 import { auth } from "./auth.js";
 import { MongoClient, ObjectId } from "mongodb";
+
 const PORT = 5000;
 const app = express();
 
 const allowedOrigins = [
   "http://localhost:3000",
   "https://b-14-a-08-client.vercel.app",
- 
 ];
 
-app.use(cors({
-  origin: allowedOrigins,
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: allowedOrigins,
+    credentials: true,
+  })
+);
 
 app.all("/api/auth/*splat", toNodeHandler(auth));
 app.use(express.json());
@@ -115,6 +117,7 @@ app.get("/api/token", requireAuth, (req, res) => {
       {
         id: req.user.id,
         email: req.user.email,
+        name: req.user.name,
       },
       process.env.JWT_SECRET,
       { expiresIn: "1h" }
@@ -266,9 +269,18 @@ app.post("/api/studios", verifyJWT, async (req, res) => {
       ...req.body,
       id: String(Date.now()),
       price: Number(req.body.price),
+      securityDeposit: Number(req.body.securityDeposit),
+      maxCapacity: Number(req.body.maxCapacity),
+      amenities: Array.isArray(req.body.amenities)
+        ? req.body.amenities
+        : [],
+      overview: req.body.overview || "",
+      userName: req.user.name,
+      userEmail: req.user.email,
       rating: 0,
       reviews: 0,
       ownerId: req.user.id,
+      createdAt: new Date(),
     };
 
     await db.collection("studios").insertOne(studio);
@@ -284,9 +296,12 @@ app.get("/api/my-studios", verifyJWT, async (req, res) => {
   try {
     const db = (await connectToMongoDB()).db("studio-space");
 
-    const studios = await db.collection("studios").find({
-      ownerId: req.user.id,
-    }).toArray();
+    const studios = await db
+      .collection("studios")
+      .find({
+        ownerId: req.user.id,
+      })
+      .toArray();
 
     res.send(studios);
   } catch (err) {
@@ -297,19 +312,45 @@ app.get("/api/my-studios", verifyJWT, async (req, res) => {
 
 app.patch("/api/studios/:id", verifyJWT, async (req, res) => {
   try {
-    const { name, category, location, price, image } = req.body;
     const db = (await connectToMongoDB()).db("studio-space");
+
+    const updateData = {};
+    const allowedFields = [
+      "name",
+      "category",
+      "location",
+      "image",
+      "overview",
+    ];
+
+    allowedFields.forEach((field) => {
+      if (req.body[field] !== undefined) {
+        updateData[field] = req.body[field];
+      }
+    });
+
+    if (req.body.price !== undefined) {
+      updateData.price = Number(req.body.price);
+    }
+
+    if (req.body.securityDeposit !== undefined) {
+      updateData.securityDeposit = Number(req.body.securityDeposit);
+    }
+
+    if (req.body.maxCapacity !== undefined) {
+      updateData.maxCapacity = Number(req.body.maxCapacity);
+    }
+
+    if (req.body.amenities !== undefined) {
+      updateData.amenities = Array.isArray(req.body.amenities)
+        ? req.body.amenities
+        : [];
+    }
 
     const result = await db.collection("studios").updateOne(
       { id: req.params.id, ownerId: req.user.id },
       {
-        $set: {
-          name,
-          category,
-          location,
-          price: Number(price),
-          image,
-        },
+        $set: updateData,
       }
     );
 
@@ -353,6 +394,7 @@ if (process.env.NODE_ENV !== "production" && isMainModule) {
     console.log("server is running well");
   });
 }
+
 app.patch("/api/bookings/:id/cancel", verifyJWT, async (req, res) => {
   try {
     const client = await connectToMongoDB();

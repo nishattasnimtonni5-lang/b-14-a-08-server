@@ -28,6 +28,8 @@ export const auth = betterAuth({
   database: mongodbAdapter(db),
   emailAndPassword: {
     enabled: true,
+    minPasswordLength: 6,
+  maxPasswordLength: 128,
   },
   advanced: {
     defaultCookieAttributes: {
