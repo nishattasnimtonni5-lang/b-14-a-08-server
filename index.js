@@ -13,10 +13,7 @@ const app = express();
 const allowedOrigins = [
   "http://localhost:3000",
   "https://b-14-a-08-client.vercel.app",
-  "https://b-14-a-08-client-n5a49h3ma-a-06.vercel.app",
-  "https://b-14-a-08-client-im8m8jvdr-a-06.vercel.app",
-  "https://b-14-a-08-client-hortcrbpe-a-06.vercel.app",
-  "https://b-14-a-08-client-jae1u8t7q-a-06.vercel.app"
+ 
 ];
 
 app.use(cors({
