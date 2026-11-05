@@ -1,12 +1,12 @@
 import express from "express";
 import cors from "cors";
-import { MongoClient } from "mongodb";
+
 import { pathToFileURL } from "node:url";
 import "dotenv/config";
 import jwt from "jsonwebtoken";
 import { fromNodeHeaders, toNodeHandler } from "better-auth/node";
 import { auth } from "./auth.js";
-
+import { MongoClient, ObjectId } from "mongodb";
 const PORT = 5000;
 const app = express();
 
@@ -356,5 +356,38 @@ if (process.env.NODE_ENV !== "production" && isMainModule) {
     console.log("server is running well");
   });
 }
+app.patch("/api/bookings/:id/cancel", verifyJWT, async (req, res) => {
+  try {
+    const client = await connectToMongoDB();
+    const database = client.db("studio-space");
+    const bookings = database.collection("bookings");
+
+    if (!ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: "Invalid booking ID" });
+    }
+
+    const result = await bookings.updateOne(
+      {
+        _id: new ObjectId(req.params.id),
+        userId: req.user.id,
+        status: { $in: ["Pending", "Confirmed"] },
+      },
+      {
+        $set: { status: "Cancelled" },
+      }
+    );
+
+    if (result.modifiedCount === 0) {
+      return res.status(404).json({
+        message: "Booking not found or cannot be cancelled",
+      });
+    }
+
+    res.status(200).json({ message: "Booking cancelled successfully" });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ message: "Failed to cancel booking" });
+  }
+});
 
 export default app;
