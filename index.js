@@ -22,8 +22,8 @@ app.use(cors({
   credentials: true
 }));
 
+app.all("/api/auth/*splat", toNodeHandler(auth));
 app.use(express.json());
-app.use("/api/auth", toNodeHandler(auth));
 
 const client = new MongoClient(process.env.MONGODB_URI);
 
